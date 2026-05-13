@@ -34,3 +34,8 @@ estimator_results/*
 docs/_site
 docs/.jekyll-metadata
 docs/Gemfile*
+
+# training data, logs, and visualizations
+data/
+logs/
+visualizations/
