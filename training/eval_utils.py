@@ -57,13 +57,30 @@ _CONFIDENCE_RE = re.compile(
 )
 
 
-def _extract_confidence(response: str) -> float | None:
+def _word_prefix(text: str, max_words: int) -> str:
+    """Return the character prefix of text that spans at most max_words whitespace-delimited words."""
+    count = 0
+    i = 0
+    n = len(text)
+    while i < n and count < max_words:
+        while i < n and text[i].isspace():
+            i += 1
+        if i >= n:
+            break
+        while i < n and not text[i].isspace():
+            i += 1
+        count += 1
+    return text[:i]
+
+
+def _extract_confidence(response: str, max_words: int | None = None) -> float | None:
     """
-    Parse the declared confidence from the first line of the <think> block.
-    Expects an integer 0-100; rescales to [0, 1].
-    Returns None if not found or value is out of the 0-100 range.
+    Parse the declared confidence from the response. Rescales integer 0-100 to [0, 1].
+    If max_words is set, only searches within the first max_words whitespace-delimited words.
+    Returns None if not found or value is out of range.
     """
-    m = _CONFIDENCE_RE.search(response)
+    search_text = _word_prefix(response, max_words) if max_words is not None else response
+    m = _CONFIDENCE_RE.search(search_text)
     if m is None:
         return None
     try:
@@ -123,6 +140,36 @@ def grpo_reward_wager(data_source, solution_str, ground_truth, extra_info):
         response_length      -- length of full response string
     """
     r = _extract_confidence(solution_str)
+    confidence_declared = int(r is not None)
+
+    pred = _extract_boxed(solution_str)
+    is_correct = int(_check_correct(pred, ground_truth)) if pred is not None else 0
+
+    if r is None:
+        score = -1.0
+    elif is_correct:
+        score = 2 * r - r ** 2
+    else:
+        score = -(r ** 2)
+
+    return {
+        "score": score,
+        "declared_confidence": r,
+        "is_correct": is_correct,
+        "confidence_declared": confidence_declared,
+        "response_length": len(solution_str),
+    }
+
+
+def grpo_reward_wager_cot(data_source, solution_str, ground_truth, extra_info):
+    """
+    Proper scoring rule reward for the CoT-sketch variant.
+
+    Same as grpo_reward_wager but the model is allowed up to 100 words of
+    planning before declaring confidence. Confidence must appear within the
+    first 100 words; anything later is treated as undeclared (score = -1.0).
+    """
+    r = _extract_confidence(solution_str, max_words=100)
     confidence_declared = int(r is not None)
 
     pred = _extract_boxed(solution_str)
