@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=llm-calib
-#SBATCH --array=0-3
+#SBATCH --array=0-5
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
@@ -88,6 +88,26 @@ case $SLURM_ARRAY_TASK_ID in
     SUPPR_DECAY=0;   CALIB_DECAY=0
     CALIB_FILTERING=0
     USE_DYNAMIC_BUFFER=1
+    ;;
+4)
+    # two-phase: calib(filter=0, decay=75) + suppr — full two-phase approach
+    EXP_NAME=grpo_wager_twophase_comb_llama3.2-3b_exp8
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp8/twophase_comb
+    LR=2e-6
+    SUPPR_COEF=0.02; CALIB_COEF=0.002
+    SUPPR_DECAY=0;   CALIB_DECAY=75
+    CALIB_FILTERING=0
+    USE_DYNAMIC_BUFFER=0
+    ;;
+5)
+    # two-phase: calib(filter=0, decay=75) only — isolates effect of suppr vs run 4
+    EXP_NAME=grpo_wager_twophase_calib_llama3.2-3b_exp8
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp8/twophase_calib
+    LR=2e-6
+    SUPPR_COEF=0.0; CALIB_COEF=0.002
+    SUPPR_DECAY=0;  CALIB_DECAY=75
+    CALIB_FILTERING=0
+    USE_DYNAMIC_BUFFER=0
     ;;
 *)
     echo "Unknown SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
