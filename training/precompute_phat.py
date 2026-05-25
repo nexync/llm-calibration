@@ -18,6 +18,7 @@ import argparse
 import json
 import datasets
 import numpy as np
+from math_verify import parse, verify
 from vllm import LLM, SamplingParams
 
 
@@ -48,14 +49,36 @@ def extract_confidence(text: str) -> float | None:
     return None
 
 
-def extract_is_correct(text: str, ground_truths: list[str]) -> bool:
+def _extract_boxed(text: str) -> str | None:
     import re
-    # Look for boxed answer
-    m = re.search(r"\\boxed\{([^}]+)\}", text)
-    if not m:
+    matches = list(re.finditer(r"\\boxed\{", text))
+    if not matches:
+        return None
+    start = matches[-1].end()
+    depth, i = 1, start
+    while i < len(text) and depth > 0:
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+        i += 1
+    return text[start : i - 1].strip() if depth == 0 else None
+
+
+def _check_correct(pred: str, gold: str) -> bool:
+    try:
+        return verify(parse(pred, parsing_timeout=None), parse(gold, parsing_timeout=None))
+    except Exception:
+        return pred.strip() == gold.strip()
+
+
+def extract_is_correct(text: str, ground_truths: list[str]) -> bool:
+    if not ground_truths:
         return False
-    pred = m.group(1).strip()
-    return any(pred == gt.strip() for gt in ground_truths)
+    pred = _extract_boxed(text)
+    if pred is None:
+        return False
+    return any(_check_correct(pred, gt) for gt in ground_truths)
 
 
 def main():
@@ -98,20 +121,20 @@ def main():
 
     results: dict[int, float] = {}
     for idx, (row, output) in enumerate(zip(ds, outputs)):
-        gts = row.get("reward_model", {}).get("ground_truth", [])
+        rm = row.get("reward_model") or {}
+        gts = rm.get("ground_truth") or []
         if isinstance(gts, str):
             gts = [gts]
 
-        corrects = []
-        for completion in output.outputs:
-            text = completion.text
-            corrects.append(float(extract_is_correct(text, gts)))
-
-        p_hat = float(np.mean(corrects))
+        corrects = [float(extract_is_correct(c.text, gts)) for c in output.outputs]
+        p_hat = float(np.mean(corrects)) if corrects else 0.0
         results[idx] = p_hat
 
         if idx % 500 == 0:
             print(f"  [{idx}/{len(ds)}] p_hat={p_hat:.2f}")
+            # checkpoint so a late crash doesn't lose everything
+            with open(args.output, "w") as f:
+                json.dump(results, f)
 
     print(f"\nSaving p_hat estimates to {args.output}")
     with open(args.output, "w") as f:

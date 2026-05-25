@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=llm-calib-exp9
-#SBATCH --array=0-1
+#SBATCH --array=0-4
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
@@ -24,6 +24,8 @@ export VLLM_USE_V1=1
 MODEL_PATH=/scratch/gpfs/DANQIC/jeff/models/llama3.2-3b-instruct
 REWARD_FN_PATH=/scratch/gpfs/DANQIC/jeff/llm-calibration/training/eval_utils.py
 DATA_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/data/math
+SAMPLER_PATH=/scratch/gpfs/DANQIC/jeff/llm-calibration/training/dynamic_buffer_sampler.py
+PHAT_PATH=${DATA_DIR}/train_phat.json
 
 TRAIN_BATCH_SIZE=256
 N_ROLLOUTS=16
@@ -43,25 +45,59 @@ TRAIN_FILES=${DATA_DIR}/math_wager_cot_train.parquet
 VAL_FILES=${DATA_DIR}/math_wager_cot_val.parquet
 REWARD_FN=grpo_reward_wager_cot
 CALIB_K=5
-CALIB_FILTERING=-1
 PPO_MINI_BSZ=$((TRAIN_BATCH_SIZE / 2))
 
+# mirrors exp8 run structure exactly, using CoT prompt
 case $SLURM_ARRAY_TASK_ID in
 0)
-    # pure RL baseline — no auxiliary losses
-    EXP_NAME=grpo_wager_cot_rl_llama3.2-3b_exp9
-    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/rl_only
+    # dynamic buffer, pure RL
+    EXP_NAME=grpo_wager_cot_dynbuf_rl_llama3.2-3b_exp9
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/dynbuf_rl_only
     LR=2e-6
     SUPPR_COEF=0.0; CALIB_COEF=0.0
     SUPPR_DECAY=0;  CALIB_DECAY=0
+    CALIB_FILTERING=-1
+    USE_DYNAMIC_BUFFER=1
     ;;
 1)
-    # comb: best config from exp7 (calib + suppr, LR=2e-6)
-    EXP_NAME=grpo_wager_cot_comb_llama3.2-3b_exp9
-    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/comb
+    # dynamic buffer + calib only
+    EXP_NAME=grpo_wager_cot_dynbuf_calib_llama3.2-3b_exp9
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/dynbuf_calib
+    LR=2e-6
+    SUPPR_COEF=0.0; CALIB_COEF=0.002
+    SUPPR_DECAY=0;  CALIB_DECAY=0
+    CALIB_FILTERING=-1
+    USE_DYNAMIC_BUFFER=1
+    ;;
+2)
+    # dynamic buffer + comb
+    EXP_NAME=grpo_wager_cot_dynbuf_comb_llama3.2-3b_exp9
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/dynbuf_comb
     LR=2e-6
     SUPPR_COEF=0.02; CALIB_COEF=0.002
     SUPPR_DECAY=0;   CALIB_DECAY=0
+    CALIB_FILTERING=-1
+    USE_DYNAMIC_BUFFER=1
+    ;;
+3)
+    # two-phase: calib(filter from step 0, decay=75) + suppr
+    EXP_NAME=grpo_wager_cot_twophase_comb_llama3.2-3b_exp9
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/twophase_comb
+    LR=2e-6
+    SUPPR_COEF=0.02; CALIB_COEF=0.002
+    SUPPR_DECAY=0;   CALIB_DECAY=75
+    CALIB_FILTERING=0
+    USE_DYNAMIC_BUFFER=0
+    ;;
+4)
+    # two-phase: calib only — isolates effect of suppr vs run 3
+    EXP_NAME=grpo_wager_cot_twophase_calib_llama3.2-3b_exp9
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/twophase_calib
+    LR=2e-6
+    SUPPR_COEF=0.0; CALIB_COEF=0.002
+    SUPPR_DECAY=0;  CALIB_DECAY=75
+    CALIB_FILTERING=0
+    USE_DYNAMIC_BUFFER=0
     ;;
 *)
     echo "Unknown SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
@@ -86,6 +122,19 @@ else
     SAVE_FREQ=10
 fi
 
+# ── dynamic buffer sampler args ─────────────────────────────────────────────
+EXTRA_ARGS=()
+if [ "$USE_DYNAMIC_BUFFER" = "1" ]; then
+    EXTRA_ARGS+=(
+        "data.sampler.class_path=${SAMPLER_PATH}"
+        "data.sampler.class_name=DynamicBufferSampler"
+        "data.sampler.warmstart_path=${PHAT_PATH}"
+        "data.sampler.ema_alpha=0.3"
+        "data.sampler.n_bins=10"
+        "data.dataloader_num_workers=0"
+    )
+fi
+
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     algorithm.norm_adv_by_std_in_grpo=${NORM_ADV} \
@@ -95,6 +144,7 @@ python3 -m verl.trainer.main_ppo \
     data.max_prompt_length=1280 \
     data.max_response_length=8192 \
     data.return_raw_chat=True \
+    "${EXTRA_ARGS[@]}" \
     actor_rollout_ref.model.path="${MODEL_PATH}" \
     actor_rollout_ref.actor.optim.lr=${LR} \
     actor_rollout_ref.actor.ppo_mini_batch_size=${PPO_MINI_BSZ} \

@@ -121,12 +121,11 @@ Exp7 best run (`comb_lr2x`): Brier ~0.109, corr ~0.5. Still real headroom to tar
 
 | ID | Name | LR | suppr_coef | calib_coef | calib_decay | calib_filtering | dynamic buffer |
 |---|---|---|---|---|---|---|---|
-| 0 | baseline | 2e-6 | 0.02 | 0.002 | none | -1 (off) | no |
-| 1 | dynbuf_rl_only | 2e-6 | 0.0 | 0.0 | none | 0 | yes |
-| 2 | dynbuf_calib | 2e-6 | 0.0 | 0.002 | none | 0 | yes |
-| 3 | dynbuf_comb | 2e-6 | 0.02 | 0.002 | none | 0 | yes |
-| 4 | twophase_comb | 2e-6 | 0.02 | 0.002 | →0 by step 75 | 0 | no |
-| 5 | twophase_calib | 2e-6 | 0.0 | 0.002 | →0 by step 75 | 0 | no |
+| 0 | dynbuf_rl_only | 2e-6 | 0.0 | 0.0 | none | -1 (off) | yes |
+| 1 | dynbuf_calib | 2e-6 | 0.0 | 0.002 | none | -1 (off) | yes |
+| 2 | dynbuf_comb | 2e-6 | 0.02 | 0.002 | none | -1 (off) | yes |
+| 3 | twophase_comb | 2e-6 | 0.02 | 0.002 | →0 by step 75 | 0 (from step 0) | no |
+| 4 | twophase_calib | 2e-6 | 0.0 | 0.002 | →0 by step 75 | 0 (from step 0) | no |
 
 **Pre-requisite for runs 1-3**: run `training/precompute_phat.py` on 1 GPU to generate `data/math/train_phat.json` before submitting.
 
@@ -154,10 +153,15 @@ python3 training/preprocess.py --input data/math/math_train.parquet --split trai
 python3 training/preprocess.py --input data/math/math500_test.jsonl --split val
 ```
 
-| ID | Name | LR | suppr_coef | calib_coef |
-|---|---|---|---|---|
-| 0 | rl_only | 2e-6 | 0.0 | 0.0 |
-| 1 | comb | 2e-6 | 0.02 | 0.002 |
+Mirrors exp8 run structure exactly — same hyperparams, same sampling strategy, CoT prompt only difference.
+
+| ID | Name | LR | suppr_coef | calib_coef | calib_decay | calib_filtering | dynamic buffer |
+|---|---|---|---|---|---|---|---|
+| 0 | dynbuf_rl_only | 2e-6 | 0.0 | 0.0 | none | -1 (off) | yes |
+| 1 | dynbuf_calib | 2e-6 | 0.0 | 0.002 | none | -1 (off) | yes |
+| 2 | dynbuf_comb | 2e-6 | 0.02 | 0.002 | none | -1 (off) | yes |
+| 3 | twophase_comb | 2e-6 | 0.02 | 0.002 | →0 by step 75 | 0 (from step 0) | no |
+| 4 | twophase_calib | 2e-6 | 0.0 | 0.002 | →0 by step 75 | 0 (from step 0) | no |
 
 ---
 

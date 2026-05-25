@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=llm-calib
-#SBATCH --array=0-5
+#SBATCH --array=0-4
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
@@ -46,51 +46,41 @@ REWARD_FN=grpo_reward_wager
 CALIB_K=5
 PPO_MINI_BSZ=$((TRAIN_BATCH_SIZE / 2))
 
-# exp8 ablation: best config from exp7 (comb_lr2x) × dynamic buffer on/off
-# calib_filtering_steps removed — stratified sampling handles the imbalance
+# exp8: dynamic buffer ablation (runs 0-2) + two-phase calib ablation (runs 3-4)
+# dynbuf runs use no calib_filtering — the buffer handles distribution directly
 case $SLURM_ARRAY_TASK_ID in
 0)
-    # best exp7 config, no dynamic buffer (baseline comparison)
-    EXP_NAME=grpo_wager_comb_lr2x_llama3.2-3b_exp8_baseline
-    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp8/baseline
-    LR=2e-6
-    SUPPR_COEF=0.02; CALIB_COEF=0.002
-    SUPPR_DECAY=0;   CALIB_DECAY=0
-    CALIB_FILTERING=-1
-    USE_DYNAMIC_BUFFER=0
-    ;;
-1)
-    # dynamic buffer, no calib/suppr — pure RL with stratified sampling
+    # dynamic buffer, pure RL — isolates effect of stratified sampling alone
     EXP_NAME=grpo_wager_dynbuf_llama3.2-3b_exp8_rl_only
     OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp8/dynbuf_rl_only
     LR=2e-6
     SUPPR_COEF=0.0; CALIB_COEF=0.0
     SUPPR_DECAY=0;  CALIB_DECAY=0
-    CALIB_FILTERING=0
+    CALIB_FILTERING=-1
     USE_DYNAMIC_BUFFER=1
     ;;
-2)
+1)
     # dynamic buffer + calib only
     EXP_NAME=grpo_wager_dynbuf_calib_llama3.2-3b_exp8
     OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp8/dynbuf_calib
     LR=2e-6
     SUPPR_COEF=0.0; CALIB_COEF=0.002
     SUPPR_DECAY=0;  CALIB_DECAY=0
-    CALIB_FILTERING=0
+    CALIB_FILTERING=-1
     USE_DYNAMIC_BUFFER=1
     ;;
-3)
-    # dynamic buffer + comb (best exp7 config + stratified sampling)
+2)
+    # dynamic buffer + comb
     EXP_NAME=grpo_wager_dynbuf_comb_llama3.2-3b_exp8
     OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp8/dynbuf_comb
     LR=2e-6
     SUPPR_COEF=0.02; CALIB_COEF=0.002
     SUPPR_DECAY=0;   CALIB_DECAY=0
-    CALIB_FILTERING=0
+    CALIB_FILTERING=-1
     USE_DYNAMIC_BUFFER=1
     ;;
-4)
-    # two-phase: calib(filter=0, decay=75) + suppr — full two-phase approach
+3)
+    # two-phase: calib(filter from step 0, decay=75) + suppr
     EXP_NAME=grpo_wager_twophase_comb_llama3.2-3b_exp8
     OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp8/twophase_comb
     LR=2e-6
@@ -99,8 +89,8 @@ case $SLURM_ARRAY_TASK_ID in
     CALIB_FILTERING=0
     USE_DYNAMIC_BUFFER=0
     ;;
-5)
-    # two-phase: calib(filter=0, decay=75) only — isolates effect of suppr vs run 4
+4)
+    # two-phase: calib only — isolates effect of suppr vs run 3
     EXP_NAME=grpo_wager_twophase_calib_llama3.2-3b_exp8
     OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp8/twophase_calib
     LR=2e-6
