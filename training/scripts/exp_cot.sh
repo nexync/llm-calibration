@@ -43,7 +43,7 @@ TRAIN_FILES=${DATA_DIR}/math_wager_cot_train.parquet
 VAL_FILES=${DATA_DIR}/math_wager_cot_val.parquet
 REWARD_FN=grpo_reward_wager_cot
 CALIB_K=5
-CALIB_FILTERING=0
+CALIB_FILTERING=-1
 PPO_MINI_BSZ=$((TRAIN_BATCH_SIZE / 2))
 
 case $SLURM_ARRAY_TASK_ID in

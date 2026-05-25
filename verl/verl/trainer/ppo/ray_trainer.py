@@ -1681,7 +1681,7 @@ class RayPPOTrainer:
                             _conf_positions, _conf_mse_weights = [], []
                             _calib_token_ids_list, _calib_weights_list = [], []
                             _apply_cap_filter = (
-                                _calib_filtering_steps > 0
+                                _calib_filtering_steps >= 0
                                 and self.global_steps >= _calib_filtering_steps
                             )
                             for _i, (_c_val, _uid) in enumerate(zip(_R_raw, _uid_arr)):
