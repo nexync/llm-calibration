@@ -115,22 +115,30 @@ Exp7 best run (`comb_lr2x`): Brier ~0.109, corr ~0.5. Still real headroom to tar
 | 4 | calib_lr2x_decay200 | 2e-6 | 0.0 | 0.002 | calib→0 by step 200 | ~0.13 |
 | 5 | comb_lr2x_decay200 | 2e-6 | 0.02 | 0.002 | both→0 by step 200 | ~0.12 |
 
-### Exp 8 runs (current — `claude` branch)
+### Exp 8 runs (current — `dynabuffer` branch)
 
-| ID | Name | LR | suppr_coef | calib_coef | dynamic buffer |
-|---|---|---|---|---|---|
-| 0 | baseline | 2e-6 | 0.02 | 0.002 | no (random sampling) |
-| 1 | dynbuf_rl_only | 2e-6 | 0.0 | 0.0 | yes |
-| 2 | dynbuf_calib | 2e-6 | 0.0 | 0.002 | yes |
-| 3 | dynbuf_comb | 2e-6 | 0.02 | 0.002 | yes |
+| ID | Name | LR | suppr_coef | calib_coef | calib_decay | calib_filtering | dynamic buffer |
+|---|---|---|---|---|---|---|---|
+| 0 | baseline | 2e-6 | 0.02 | 0.002 | none | 0 | no |
+| 1 | dynbuf_rl_only | 2e-6 | 0.0 | 0.0 | none | 0 | yes |
+| 2 | dynbuf_calib | 2e-6 | 0.0 | 0.002 | none | 0 | yes |
+| 3 | dynbuf_comb | 2e-6 | 0.02 | 0.002 | none | 0 | yes |
+| 4 | twophase_comb | 2e-6 | 0.02 | 0.002 | →0 by step 75 | 0 | no |
+| 5 | twophase_calib | 2e-6 | 0.0 | 0.002 | →0 by step 75 | 0 | no |
 
-**Pre-requisite**: run `training/precompute_phat.py` on 1 GPU to generate `data/math/train_phat.json` before submitting exp8.
+**Pre-requisite for runs 1-3**: run `training/precompute_phat.py` on 1 GPU to generate `data/math/train_phat.json` before submitting.
 
-### Dynamic buffer design
+### Dynamic buffer design (runs 1-3)
 
 **Problem**: MATH difficulty is bimodal — most prompts have p_hat ≈ 0 or 1 for Llama 3B. `calib_filtering_steps` created a goldilocks problem: filter extremes → lose signal at 0/100; don't filter → intermediate calibration signal drowned out.
 
 **Solution**: `DynamicBufferSampler` (`training/dynamic_buffer_sampler.py`) bins all training prompts into 10 p_hat decile bins and samples each batch with ~equal slots per bin. p_hat per prompt is updated via EMA (α=0.3) after every training step using rollout `is_correct` results. Warm-started from base model estimates so stratification is active from step 0.
+
+### Two-phase calib design (runs 4-5)
+
+**Motivation**: exp7 showed `comb_lr2x_decay200` was worse overall Brier than `comb_lr2x` but correctly clustered confidence mass near 0 for hard problems — suggesting calib decay lets RL+suppr clean up the extremes. However, decay=200 left ~25% calib signal at step 150, not enough time for RL/suppr to finish the job.
+
+**Design**: Use `calib_filtering_steps=0` (never apply calib to all-correct or all-wrong batches) and `calib_decay=75` (calib reaches 0 by step 75, halfway through training). Phase 1 (steps 0–75): calib pushes intermediate-difficulty prompts toward correct intermediate confidences. Phase 2 (steps 75–150): RL + suppr handle the extreme-accuracy prompts without calib interference. Runs 4 vs 5 isolate the contribution of suppr.
 
 ---
 
