@@ -43,7 +43,11 @@ This incentivises the model to report its true empirical solve-rate. On top of t
 | `verl/verl/trainer/ppo/ray_trainer.py` | Main training loop; lines ~1570–1755 compute per-prompt Brier/correlation metrics and populate `conf_positions`, `calib_token_ids`, `calib_weights`, `conf_mse_weights` for the auxiliary losses |
 | `verl/verl/workers/utils/losses.py` | `ppo_loss()`: applies `suppr_coef` and `calib_coef` auxiliary losses on top of standard GRPO loss |
 | `verl/verl/workers/config/actor.py` | `ActorConfig` dataclass; lines 166–171 define `suppr_coef`, `calib_coef`, `calib_k`, decay fields |
-| `training/scripts/exp7.sh` | Latest SLURM array script (6 runs) |
+| `verl/verl/utils/dataset/rl_dataset.py` | `RLHFDataset.__getitem__` — adds `data_index` field (stable dataset row integer) used by `DynamicBufferSampler` |
+| `training/dynamic_buffer_sampler.py` | `DynamicBufferSampler` — curriculum sampler that stratifies batches by p_hat decile bin (exp8+) |
+| `training/precompute_phat.py` | Offline vLLM inference to warm-start the dynamic buffer with base-model p_hat estimates; run once before exp8 on 1 GPU |
+| `training/scripts/exp7.sh` | SLURM array script for exp7 (6 runs) |
+| `training/scripts/exp8.sh` | SLURM array script for exp8 (4 runs); uses dynamic buffer |
 
 ---
 
@@ -65,7 +69,7 @@ calib_loss = -sum_pair  sum_i  a_i * log P(c_i)
 
 Both losses are normalised by `global_batch_size` (number of pairs) to match the per-token GRPO normalisation.
 
-**Filtering:** `calib_filtering_steps` — after this many steps, skip the calib signal for prompts where the batch is entirely correct or entirely wrong (p_hat ∈ {0, 1}), avoiding absorbing states.
+**Filtering:** `calib_filtering_steps` — after this many steps, skip the calib signal for prompts where the batch is entirely correct or entirely wrong (p_hat ∈ {0, 1}), avoiding absorbing states. **Superseded in exp8 by the dynamic buffer sampler** (see below).
 
 **Decay:** `suppr_coef_decay_steps` / `calib_coef_decay_steps` — linearly decay coefficient to 0 over this many steps (0 = no decay).
 
@@ -82,7 +86,7 @@ Both losses are normalised by `global_batch_size` (number of pairs) to match the
 | `reward/confidence_declared` | Fraction of rollouts where model declared a confidence |
 | `reward/is_correct` | Fraction correct (accuracy) |
 
-Current runs sit at Brier ~0.11–0.22 and corr ~0.4–0.6. Real headroom to target values.
+Exp7 best run (`comb_lr2x`): Brier ~0.109, corr ~0.5. Still real headroom to target values.
 
 ---
 
@@ -97,26 +101,43 @@ Current runs sit at Brier ~0.11–0.22 and corr ~0.4–0.6. Real headroom to tar
 | 4 | 0427 | Detailed prompt; full ablation (baseline, calib, suppr, comb) | Detailed prompt improves diversity; suppr drives away miscal; calib still attracted to R=0 |
 | 5 | 0429 | Clipped suppression loss | Attracting states shift to p=0.1, p=0.9; empirical caps bimodal at 0/1 |
 | 6 | 0501 | 150-step training; decay ablations (calib decay=30) | Baseline run added for comparison |
-| 7 | 0511 | `calib_filtering_steps=50`: suppress calib signal at extreme-accuracy batches after step 50; LR ablation (1e-6 vs 2e-6) | Results pending |
+| 7 | 0511 | `calib_filtering_steps=50`: suppress calib signal at extreme-accuracy batches after step 50; LR ablation (1e-6 vs 2e-6) | Best: `comb_lr2x` (Brier 0.109). Higher LR helps. `calib_filtering` goldilocks problem identified. |
+| 8 | 0525 | Dynamic buffer sampler: stratify each batch uniformly across p_hat decile bins; warm-started from base model p_hat; `calib_filtering_steps=0` | Results pending |
 
-### Exp 7 runs (current)
+### Exp 7 runs
 
-| ID | Name | LR | suppr_coef | calib_coef | decay |
+| ID | Name | LR | suppr_coef | calib_coef | decay | Brier@150 |
+|---|---|---|---|---|---|---|
+| 0 | calib | 1e-6 | 0.0 | 0.002 | none | ~0.18 |
+| 1 | comb | 1e-6 | 0.02 | 0.002 | none | ~0.15 |
+| 2 | calib_lr2x | 2e-6 | 0.0 | 0.002 | none | ~0.14 |
+| 3 | comb_lr2x | 2e-6 | 0.02 | 0.002 | none | **0.109** |
+| 4 | calib_lr2x_decay200 | 2e-6 | 0.0 | 0.002 | calib→0 by step 200 | ~0.13 |
+| 5 | comb_lr2x_decay200 | 2e-6 | 0.02 | 0.002 | both→0 by step 200 | ~0.12 |
+
+### Exp 8 runs (current — `claude` branch)
+
+| ID | Name | LR | suppr_coef | calib_coef | dynamic buffer |
 |---|---|---|---|---|---|
-| 0 | calib | 1e-6 | 0.0 | 0.002 | none |
-| 1 | comb | 1e-6 | 0.02 | 0.002 | none |
-| 2 | calib_lr2x | 2e-6 | 0.0 | 0.002 | none |
-| 3 | comb_lr2x | 2e-6 | 0.02 | 0.002 | none |
-| 4 | calib_lr2x_decay200 | 2e-6 | 0.0 | 0.002 | calib decays over 200 steps |
-| 5 | comb_lr2x_decay200 | 2e-6 | 0.02 | 0.002 | both decay over 200 steps |
+| 0 | baseline | 2e-6 | 0.02 | 0.002 | no (random sampling) |
+| 1 | dynbuf_rl_only | 2e-6 | 0.0 | 0.0 | yes |
+| 2 | dynbuf_calib | 2e-6 | 0.0 | 0.002 | yes |
+| 3 | dynbuf_comb | 2e-6 | 0.02 | 0.002 | yes |
+
+**Pre-requisite**: run `training/precompute_phat.py` on 1 GPU to generate `data/math/train_phat.json` before submitting exp8.
+
+### Dynamic buffer design
+
+**Problem**: MATH difficulty is bimodal — most prompts have p_hat ≈ 0 or 1 for Llama 3B. `calib_filtering_steps` created a goldilocks problem: filter extremes → lose signal at 0/100; don't filter → intermediate calibration signal drowned out.
+
+**Solution**: `DynamicBufferSampler` (`training/dynamic_buffer_sampler.py`) bins all training prompts into 10 p_hat decile bins and samples each batch with ~equal slots per bin. p_hat per prompt is updated via EMA (α=0.3) after every training step using rollout `is_correct` results. Warm-started from base model estimates so stratification is active from step 0.
 
 ---
 
 ## Open questions / next steps
 
-- Do Exp 7 results confirm that `calib_filtering_steps` breaks the p=0,1 absorbing states?
-- Does higher LR (2e-6) improve convergence speed without hurting calibration?
-- Does calib decay help or hurt long-run calibration?
+- Does dynamic buffer stratification break the bimodal collapse without the goldilocks tradeoff?
+- Does `dynbuf_comb` beat the exp7 `comb_lr2x` baseline?
 - Once Llama 3B is working well: extend to **Qwen** and **OLMo** to test generality.
 - Downstream applications: budget allocation and pass@k simulation (see `applications/`).
 
@@ -132,4 +153,5 @@ data/math/
   math_wager_detailed_val.parquet
   math_standard_val.parquet
   math500_test.jsonl                 # held-out eval
+  train_phat.json                    # base model p_hat per training prompt (generate via precompute_phat.py)
 ```

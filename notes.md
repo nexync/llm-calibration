@@ -77,4 +77,6 @@ Issues with training from command line updates. We are now tapering calibration 
 after 30 steps. See distribution when models are trained tomorrow
 
 Results:
-    -
+    - Filtering out the probability mass at the extreme ends of accuracy resulted in all probability mass gathered at intermediate values
+    - Learning rate higher is better, model needs high learning rate (can continue to experiment)
+    - When the calibration lr is tapered off, this effect is convergence to distribution?
