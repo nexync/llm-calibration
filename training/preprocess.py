@@ -247,14 +247,14 @@ def main():
     wager_detailed_path = os.path.join(args.output_dir, f"math_wager_detailed_{args.split}.parquet")
     wager_cot_path = os.path.join(args.output_dir, f"math_wager_cot_{args.split}.parquet")
 
-    # pd.DataFrame(standard_rows).to_parquet(standard_path, index=False)
-    # pd.DataFrame(wager_rows).to_parquet(wager_path, index=False)
-    # pd.DataFrame(wager_detailed_rows).to_parquet(wager_detailed_path, index=False)
+    pd.DataFrame(standard_rows).to_parquet(standard_path, index=False)
+    pd.DataFrame(wager_rows).to_parquet(wager_path, index=False)
+    pd.DataFrame(wager_detailed_rows).to_parquet(wager_detailed_path, index=False)
     pd.DataFrame(wager_cot_rows).to_parquet(wager_cot_path, index=False)
 
-    # print(f"Saved {len(standard_rows)} rows to {standard_path}")
-    # print(f"Saved {len(wager_rows)} rows to {wager_path}")
-    # print(f"Saved {len(wager_detailed_rows)} rows to {wager_detailed_path}")
+    print(f"Saved {len(standard_rows)} rows to {standard_path}")
+    print(f"Saved {len(wager_rows)} rows to {wager_path}")
+    print(f"Saved {len(wager_detailed_rows)} rows to {wager_detailed_path}")
     print(f"Saved {len(wager_cot_rows)} rows to {wager_cot_path}")
 
 

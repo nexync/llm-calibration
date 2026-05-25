@@ -47,7 +47,8 @@ This incentivises the model to report its true empirical solve-rate. On top of t
 | `training/dynamic_buffer_sampler.py` | `DynamicBufferSampler` — curriculum sampler that stratifies batches by p_hat decile bin (exp8+) |
 | `training/precompute_phat.py` | Offline vLLM inference to warm-start the dynamic buffer with base-model p_hat estimates; run once before exp8 on 1 GPU |
 | `training/scripts/exp7.sh` | SLURM array script for exp7 (6 runs) |
-| `training/scripts/exp8.sh` | SLURM array script for exp8 (4 runs); uses dynamic buffer |
+| `training/scripts/exp8.sh` | SLURM array script for exp8 (6 runs); uses dynamic buffer for runs 1-3 |
+| `training/scripts/exp9.sh` | SLURM array script for exp9 CoT-sketch (2 runs) |
 
 ---
 
@@ -103,7 +104,7 @@ Exp7 best run (`comb_lr2x`): Brier ~0.109, corr ~0.5. Still real headroom to tar
 | 6 | 0501 | 150-step training; decay ablations (calib decay=30) | Baseline run added for comparison |
 | 7 | 0511 | `calib_filtering_steps=50`: suppress calib signal at extreme-accuracy batches after step 50; LR ablation (1e-6 vs 2e-6) | Best: `comb_lr2x` (Brier 0.109). Higher LR helps. `calib_filtering` goldilocks problem identified. |
 | 8 | 0525 | Dynamic buffer sampler: stratify each batch uniformly across p_hat decile bins; warm-started from base model p_hat; `calib_filtering_steps=0` | Results pending |
-| CoT | 0525 | Allow model 100-word sketch before declaring confidence; tests calibration/token tradeoff | Results pending |
+| 9 | 0525 | Allow model 100-word sketch before declaring confidence; tests calibration/token tradeoff | Results pending |
 
 ### Exp 7 runs
 
@@ -116,11 +117,11 @@ Exp7 best run (`comb_lr2x`): Brier ~0.109, corr ~0.5. Still real headroom to tar
 | 4 | calib_lr2x_decay200 | 2e-6 | 0.0 | 0.002 | calib→0 by step 200 | ~0.13 |
 | 5 | comb_lr2x_decay200 | 2e-6 | 0.02 | 0.002 | both→0 by step 200 | ~0.12 |
 
-### Exp 8 runs (current — `dynabuffer` branch)
+### Exp 8 runs (current — `main` branch)
 
 | ID | Name | LR | suppr_coef | calib_coef | calib_decay | calib_filtering | dynamic buffer |
 |---|---|---|---|---|---|---|---|
-| 0 | baseline | 2e-6 | 0.02 | 0.002 | none | 0 | no |
+| 0 | baseline | 2e-6 | 0.02 | 0.002 | none | -1 (off) | no |
 | 1 | dynbuf_rl_only | 2e-6 | 0.0 | 0.0 | none | 0 | yes |
 | 2 | dynbuf_calib | 2e-6 | 0.0 | 0.002 | none | 0 | yes |
 | 3 | dynbuf_comb | 2e-6 | 0.02 | 0.002 | none | 0 | yes |
@@ -141,13 +142,13 @@ Exp7 best run (`comb_lr2x`): Brier ~0.109, corr ~0.5. Still real headroom to tar
 
 **Design**: Use `calib_filtering_steps=0` (never apply calib to all-correct or all-wrong batches) and `calib_decay=75` (calib reaches 0 by step 75, halfway through training). Phase 1 (steps 0–75): calib pushes intermediate-difficulty prompts toward correct intermediate confidences. Phase 2 (steps 75–150): RL + suppr handle the extreme-accuracy prompts without calib interference. Runs 4 vs 5 isolate the contribution of suppr.
 
-### CoT-sketch experiment (`cot` branch)
+### Exp 9 runs (CoT-sketch)
 
 **Motivation**: Confidence declared at t=0 (before any reasoning) is pure capability estimation. Confidence declared at t=1 (after full reasoning) is essentially answer-checking. The key question is: how many extra tokens do we need to generate to meaningfully improve calibration? This is a point on a continuous axis.
 
-**Design**: New prompt (`WAGER_COT_INSTRUCTION`) allows the model up to 100 words of planning/sketch before writing `Confidence: X`. Reward function (`grpo_reward_wager_cot`) searches for the confidence declaration within the first 100 whitespace-delimited words only; anything later scores -1. Uses `math_wager_cot_{train,val}.parquet`.
+**Design**: New prompt (`WAGER_COT_INSTRUCTION`) allows the model up to 100 words of planning/sketch before writing `Confidence: X`. Reward function (`grpo_reward_wager_cot`) searches for the confidence declaration within the first 100 whitespace-delimited words only; anything later scores -1. Uses `math_wager_cot_{train,val}.parquet`. `calib_filtering_steps=-1` (disabled).
 
-**Pre-requisite**: regenerate parquets on the `cot` branch:
+**Pre-requisite**: generate cot parquets (run from `main`):
 ```bash
 python3 training/preprocess.py --input data/math/math_train.parquet --split train
 python3 training/preprocess.py --input data/math/math500_test.jsonl --split val

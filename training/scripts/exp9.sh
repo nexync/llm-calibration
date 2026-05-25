@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=llm-calib-cot
+#SBATCH --job-name=llm-calib-exp9
 #SBATCH --array=0-1
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -8,7 +8,7 @@
 #SBATCH --mem-per-cpu=16G
 #SBATCH --time=23:59:00
 #SBATCH --partition=pli-c
-#SBATCH --output=logs/calibration_cot_%A_%a.out
+#SBATCH --output=logs/calibration_exp9_%A_%a.out
 #SBATCH --mail-type=fail
 #SBATCH --mail-user=jc93@princeton.edu
 
@@ -49,16 +49,16 @@ PPO_MINI_BSZ=$((TRAIN_BATCH_SIZE / 2))
 case $SLURM_ARRAY_TASK_ID in
 0)
     # pure RL baseline — no auxiliary losses
-    EXP_NAME=grpo_wager_cot_rl_llama3.2-3b_expcot
-    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp_cot/rl_only
+    EXP_NAME=grpo_wager_cot_rl_llama3.2-3b_exp9
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/rl_only
     LR=2e-6
     SUPPR_COEF=0.0; CALIB_COEF=0.0
     SUPPR_DECAY=0;  CALIB_DECAY=0
     ;;
 1)
     # comb: best config from exp7 (calib + suppr, LR=2e-6)
-    EXP_NAME=grpo_wager_cot_comb_llama3.2-3b_expcot
-    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp_cot/comb
+    EXP_NAME=grpo_wager_cot_comb_llama3.2-3b_exp9
+    OUTPUT_DIR=/scratch/gpfs/DANQIC/jeff/llm-calibration/outputs/exp9/comb
     LR=2e-6
     SUPPR_COEF=0.02; CALIB_COEF=0.002
     SUPPR_DECAY=0;   CALIB_DECAY=0
