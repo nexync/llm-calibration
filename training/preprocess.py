@@ -48,6 +48,38 @@ WAGER_INSTRUCTION = (
 )
 
 
+WAGER_COT_INSTRUCTION = (
+    "Before declaring your confidence, you may write up to 100 words of planning "
+    "or solution sketch. Then, on its own line, write:\n\n"
+    "Confidence: X\n\n"
+    "where X is an integer between 0 and 100 representing your confidence (as a "
+    "percentage) that you will solve this problem correctly.\n\n"
+    "Your reward is computed using a proper scoring rule: it is maximized in "
+    "expectation when X equals your true empirical probability of solving this "
+    "problem correctly. Declaring X too high or too low relative to your actual "
+    "capability both reduce your expected reward.\n\n"
+    "If you do not write 'Confidence: X' within your first 100 words, you will "
+    "receive a score of -1 for this problem regardless of whether your answer is "
+    "correct. After declaring your confidence, solve the problem fully.\n\n"
+    "You may refer to the following verbal labels when reasoning about your confidence:\n\n"
+    "0–10: \"Almost no chance\"\n"
+    "10–20: \"Highly unlikely\"\n"
+    "20–30: \"Chances are slight\"\n"
+    "30–40: \"Unlikely\"\n"
+    "40–50: \"Less than even\"\n"
+    "50–60: \"Better than even\"\n"
+    "60–70: \"Likely\"\n"
+    "70–80: \"Very good chance\"\n"
+    "80–90: \"Highly likely\"\n"
+    "90–100: \"Almost certain\"\n\n"
+    "For example, a correctly formatted response looks like:\n\n"
+    "[up to 100 words of planning]\n\n"
+    "Confidence: 72\n\n"
+    "[your full reasoning here]\n\n"
+    "\\boxed{your answer}"
+)
+
+
 WAGER_INSTRUCTION_DETAILED = (
     "The very first line of your response must be:\n\n"
     "Confidence: X\n\n"
@@ -104,6 +136,15 @@ def build_wager_detailed_prompt(question: str) -> list[dict]:
     ]
 
 
+def build_wager_cot_prompt(question: str) -> list[dict]:
+    return [
+        {
+            "role": "user",
+            "content": f"{question}\n\n{MATH_FORMAT_INSTRUCTION}\n\n{WAGER_COT_INSTRUCTION}",
+        }
+    ]
+
+
 def load_input(path):
     if path.endswith(".jsonl"):
         rows = []
@@ -148,6 +189,7 @@ def main():
     standard_rows = []
     wager_rows = []
     wager_detailed_rows = []
+    wager_cot_rows = []
     skipped = 0
 
     for item in records:
@@ -160,6 +202,7 @@ def main():
 
         wager_prompt = build_wager_prompt(question)
         wager_detailed_prompt = build_wager_detailed_prompt(question)
+        wager_cot_prompt = build_wager_cot_prompt(question)
         if tokenizer is not None:
             # detailed wager prompt is longest, so only need to check that one
             if get_token_length(wager_detailed_prompt, tokenizer) > args.max_prompt_length:
@@ -187,6 +230,13 @@ def main():
             "extra_info": meta,
         })
 
+        wager_cot_rows.append({
+            "data_source": "math",
+            "prompt": wager_cot_prompt,
+            "reward_model": {"ground_truth": answer},
+            "extra_info": meta,
+        })
+
     if skipped:
         print(f"Skipped {skipped} examples exceeding max_prompt_length={args.max_prompt_length}")
 
@@ -195,14 +245,17 @@ def main():
     standard_path = os.path.join(args.output_dir, f"math_standard_{args.split}.parquet")
     wager_path = os.path.join(args.output_dir, f"math_wager_{args.split}.parquet")
     wager_detailed_path = os.path.join(args.output_dir, f"math_wager_detailed_{args.split}.parquet")
+    wager_cot_path = os.path.join(args.output_dir, f"math_wager_cot_{args.split}.parquet")
 
-    pd.DataFrame(standard_rows).to_parquet(standard_path, index=False)
-    pd.DataFrame(wager_rows).to_parquet(wager_path, index=False)
-    pd.DataFrame(wager_detailed_rows).to_parquet(wager_detailed_path, index=False)
+    # pd.DataFrame(standard_rows).to_parquet(standard_path, index=False)
+    # pd.DataFrame(wager_rows).to_parquet(wager_path, index=False)
+    # pd.DataFrame(wager_detailed_rows).to_parquet(wager_detailed_path, index=False)
+    pd.DataFrame(wager_cot_rows).to_parquet(wager_cot_path, index=False)
 
-    print(f"Saved {len(standard_rows)} rows to {standard_path}")
-    print(f"Saved {len(wager_rows)} rows to {wager_path}")
-    print(f"Saved {len(wager_detailed_rows)} rows to {wager_detailed_path}")
+    # print(f"Saved {len(standard_rows)} rows to {standard_path}")
+    # print(f"Saved {len(wager_rows)} rows to {wager_path}")
+    # print(f"Saved {len(wager_detailed_rows)} rows to {wager_detailed_path}")
+    print(f"Saved {len(wager_cot_rows)} rows to {wager_cot_path}")
 
 
 if __name__ == "__main__":
